@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>インタラクティブ・スーパーマーケット比較分析ツール（最終版）</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #f8fafc;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 450px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+            }
+        }
+        .table-container {
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        thead th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        thead th:hover {
+            background-color: #e0e7ff;
+        }
+        .sort-asc::after {
+            content: ' ▲';
+        }
+        .sort-desc::after {
+            content: ' ▼';
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 700px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close:hover,
+        .close:focus {
+            color: #000;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #ffffff;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        
+        <header class="text-center mb-12">
+            <h1 class="text-4xl md:text-5xl font-bold text-slate-800 mb-2">スーパーマーケット比較候補リスト作成</h1>
+            <p class="text-lg text-gray-600">産地直送（産直）に注力する全国50社のインタラクティブ分析ツール（Gemini AI強化版）</p>
+        </header>
+
+        <section id="overview" class="mb-12 p-6 md:p-8 bg-white rounded-2xl shadow-md border border-gray-200">
+            <h2 class="text-2xl font-bold text-center mb-4 text-slate-700">プロジェクト概要</h2>
+            <p class="text-base text-gray-600 leading-relaxed max-w-4xl mx-auto">
+                ヤマト運輸様の強みである生産者との繋がりと物流ネットワークを最大限に活用するため、産地直送（産直）を事業の核としている、または強化している全国のスーパーマーケット50社をリストアップしました。本ツールは、基本情報、産直戦略に加え、売上高や店舗の集中エリアといった経営情報も統合し、戦略的なパートナー選定を支援する動的なダッシュボードとして機能します。データを自在に操作し、貴社のビジネスに最も貢献しうるパートナーシップの発見にお役立てください。
+            </p>
+        </section>
+
+        <section id="gemini-scenario" class="mb-12 p-6 md:p-8 bg-indigo-50 rounded-2xl shadow-inner border border-indigo-200">
+            <h2 class="text-3xl font-bold text-center mb-6 text-indigo-700">✨ 全体提携シナリオ作成 (AIアシスタント)</h2>
+            <p class="text-base text-gray-700 leading-relaxed mb-4 max-w-4xl mx-auto">
+                貴社の具体的な提携戦略（例: 「**関東圏の地場産品強化**」「**高価格帯スーパーとの連携**」）を入力してください。AIがリスト全体の情報と最新の市場動向（Google検索）に基づいて、実現可能性の高い提携シナリオの概要を提案します。
+            </p>
+            <textarea id="scenarioPrompt" class="w-full p-3 border border-indigo-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition h-24 mb-4" placeholder="例: 近畿圏の中堅スーパーとの提携で、生鮮品の共同配送網を構築する戦略を提案してください。"></textarea>
+            <button id="generateScenarioBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition shadow-md flex items-center justify-center">
+                <span id="scenarioBtnText" class="mr-2">✨ 戦略シナリオを生成</span>
+                <div id="scenarioSpinner" class="loading-spinner hidden"></div>
+            </button>
+            <div id="scenarioResult" class="mt-4 p-4 bg-white border border-indigo-200 rounded-lg hidden">
+                <h4 class="text-lg font-semibold text-indigo-600 mb-2">生成されたシナリオ:</h4>
+                <p id="scenarioText" class="text-gray-800 whitespace-pre-wrap"></p>
+                <div id="scenarioSources" class="text-xs text-gray-500 mt-3 border-t pt-2 hidden"></div>
+            </div>
+        </section>
+
+        <section id="dashboard" class="mb-12">
+            <h2 class="text-3xl font-bold text-center mb-8 text-slate-700">産直市場ランドスケープ分析</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                <div class="bg-white p-6 rounded-2xl shadow-md border border-gray-200">
+                    <h3 class="text-xl font-bold text-center mb-4 text-slate-600">本社所在地（都道府県別）トップ10</h3>
+                    <div class="chart-container">
+                        <canvas id="prefectureChart"></canvas>
+                    </div>
+                     <p class="text-sm text-gray-500 mt-4 text-center">本社所在地別に見ると、大消費地に近い首都圏・近畿圏に有力な地域密着型スーパーが集中している傾向が見られます。</p>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-md border border-gray-200">
+                    <h3 class="text-xl font-bold text-center mb-4 text-slate-600">企業規模別（店舗数）の分布</h3>
+                    <div class="chart-container">
+                        <canvas id="scaleChart"></canvas>
+                    </div>
+                     <p class="text-sm text-gray-500 mt-4 text-center">店舗数100未満の中堅企業が半数以上を占め、独自の産直ルート開拓に積極的です。大手企業は自社ファームなどで産直を強化しています。</p>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="bg-white p-6 rounded-2xl shadow-md border border-gray-200 lg:col-span-2">
+                    <h3 class="text-xl font-bold text-center mb-4 text-slate-600">主要企業の売上高と店舗数比較 (バブルチャート)</h3>
+                    <p class="text-sm text-gray-500 mb-4 text-center">※店舗数と売上高の規模感を比較。バブルの大きさが売上高（億円）を示します。X軸は対数スケールです。</p>
+                    <div class="chart-container w-full max-w-full h-[400px] md:h-[500px] mx-auto">
+                        <canvas id="bubbleChart"></canvas>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-md border border-gray-200">
+                    <h3 class="text-xl font-bold text-center mb-4 text-slate-600">店舗数トップ10企業の地域集中度</h3>
+                    <div class="chart-container">
+                        <canvas id="concentrationChart"></canvas>
+                    </div>
+                     <p class="text-sm text-gray-500 mt-4 text-center">本社所在地における店舗の集中度（全店舗数に占めるHQ所在地の店舗数の割合）を比較。特に高い企業は、本社所在地の**埼玉県（ヤオコー）**、**長野県（ツルヤ）**などに店舗網を集中させていることが分かります。</p>
+                </div>
+                 <div class="bg-white p-6 rounded-2xl shadow-md border border-gray-200">
+                    <h3 class="text-xl font-bold text-center mb-4 text-slate-600">地域別スーパー企業の偏り（エリア別集計）</h3>
+                    <div class="chart-container">
+                        <canvas id="areaChart"></canvas>
+                    </div>
+                     <p class="text-sm text-gray-500 mt-4 text-center">リストアップされた50社がどこに分布しているかを示します。特に、**関東（東京・埼玉・神奈川など）**、**近畿（大阪・兵庫など）**、**九州（福岡・鹿児島など）**に産直強化企業が多いことがわかります。</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="table-view" class="bg-white p-6 md:p-8 rounded-2xl shadow-md border border-gray-200">
+            <h2 class="text-3xl font-bold text-center mb-6 text-slate-700">産直スーパーマーケット50社 詳細リスト</h2>
+            
+            <div class="mb-6">
+                <input type="text" id="searchInput" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition" placeholder="企業名、店舗エリア、特徴などで絞り込み検索...">
+            </div>
+
+            <div class="overflow-x-auto table-container border border-gray-200 rounded-lg">
+                <table class="w-full text-sm text-left text-gray-600">
+                    <thead class="text-xs text-gray-700 uppercase bg-indigo-50">
+                        <tr>
+                            <th scope="col" class="px-4 py-3" data-sort="name">スーパー名</th>
+                            <th scope="col" class="px-4 py-3" data-sort="parent">親会社</th>
+                            <th scope="col" class="px-4 py-3" data-sort="hq">本社</th>
+                            <th scope="col" class="px-4 py-3" data-sort="stores">店舗数</th>
+                            <th scope="col" class="px-4 py-3" data-sort="sales">売上高（億円）</th>
+                            <th scope="col" class="px-4 py-3" data-sort="dominant">店舗ドミナントエリア</th>
+                            <th scope="col" class="px-4 py-3">産直への注力理由・特徴</th>
+                            <th scope="col" class="px-4 py-3" data-sort="price">価格帯</th>
+                            <th scope="col" class="px-4 py-3">主な産直商品例</th>
+                            <th scope="col" class="px-4 py-3">アクション</th>
+                        </tr>
+                    </thead>
+                    <tbody id="supermarketTable">
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <!-- Modal for LLM Strategy Proposal -->
+    <div id="strategyModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3 class="text-2xl font-bold text-indigo-600 mb-4">✨ 提携戦略提案</h3>
+            <div id="modalContent">
+                <p class="text-lg font-semibold mb-2" id="modalTargetName"></p>
+                <div id="modalResult" class="p-4 bg-gray-50 border border-gray-200 rounded-lg min-h-[150px]">
+                    <p id="modalText" class="text-gray-800 whitespace-pre-wrap">データを分析中です...</p>
+                    <div id="modalSpinner" class="flex justify-center items-center h-full">
+                        <div class="loading-spinner" style="border-top: 4px solid #4F46E5;"></div>
+                    </div>
+                    <div id="modalSources" class="text-xs text-gray-500 mt-3 border-t pt-2 hidden"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+const supermarketData = [
+    { id: 1, name: 'イオン', parent: 'イオングループ', hq: '千葉県', stores: 19280, sales: 91168, dominant: '全国（特に関東・東海・近畿）', concentration: 0.1, reason: '自社農場「イオンアグリ創造」を全国展開し、生産から販売まで一貫管理することで安全・安心と安定供給を両立。グループの物流網を活かした大規模な産直モデルを構築。', price: '中価格帯', products: 'トップバリュ グリーンアイオーガニック野菜、三木里脇農場（兵庫）の野菜、未来の杜（茨城）のトマト、各地の提携漁港からの鮮魚、自社農場産米' },
+    { id: 2, name: 'イトーヨーカドー', parent: 'セブン&アイHD', hq: '東京都', stores: 126, sales: 7000, dominant: '関東（特に首都圏）', concentration: 25, reason: '「顔が見える食品。」をコンセプトに全国の生産者と連携。独自の基準を満たした商品をブランド化し、品質とストーリー性で差別化を図る。', price: '中～高価格帯', products: 'セブンプレミアムフレッシュ、契約農家の特別栽培米、北海道十勝産のジャガイモ、青森県産りんご、三陸沖のわかめ' },
+    { id: 3, name: 'ライフ', parent: 'ライフコーポレーション', hq: '大阪府', stores: 304, sales: 8647, dominant: '近畿・首都圏', concentration: 35, reason: '近畿圏・首都圏の店舗網を活かし、各店舗近郊の生産者と連携する「地場野菜」コーナーが人気。都市部での新鮮な地元産品ニーズに応える。', price: '中価格帯', products: '大阪泉州の水なす、京都の九条ねぎ、千葉県産の朝採れとうもろこし、神奈川県三浦半島のキャベツ、近郊農家の葉物野菜' },
+    { id: 4, name: 'ヤオコー', parent: 'ヤオコー', hq: '埼玉県', stores: 184, sales: 5740, dominant: '埼玉県', concentration: 60, reason: '自社農場「ヤオコーファーム」での栽培研究と、各店舗での「地場野菜コーナー」の二本柱。顧客の鮮度志向に応え、地域との共存を目指す。', price: '中価格帯', products: 'ヤオコーファーム産トマト・ほうれん草、埼玉県深谷市のブロッコリー、群馬県産のこんにゃく芋、地元契約農家のきゅうり、朝採れレタス' },
+    { id: 5, name: 'オーケーストア', parent: 'オーケー', hq: '神奈川県', stores: 151, sales: 5690, dominant: '神奈川県・東京都', concentration: 55, reason: '「高品質・Everyday Low Price」の実現のため、中間流通を省ける産直でコスト削減と鮮度向上を両立。特に野菜・果物で注力。', price: '低～中価格帯', products: '長野県川上村のレタス、茨城県産のさつまいも、山梨県産の桃・ぶどう、全国の提携農家からの旬の野菜、静岡県産のお茶' },
+    { id: 6, name: '成城石井', parent: 'ローソン', hq: '神奈川県', stores: 205, sales: 1300, dominant: '東京都・神奈川県（全国展開）', concentration: 15, reason: '国内外の高品質な食材を求める顧客層に向け、バイヤーが直接産地へ赴き、希少価値の高い商品やこだわりの製法を持つ生産者を発掘。', price: '高価格帯', products: '成城石井desicaシリーズの原料（トマト等）、指定農園のいちご（あまおう等）、北海道産アスパラガス、フランス直輸入チーズ、イタリア産オリーブオイル' },
+    { id: 7, name: 'ツルヤ', parent: 'ツルヤ', hq: '長野県', stores: 40, sales: 1000, dominant: '長野県（特に東信・中信）', concentration: 90, reason: '長野県内の生産者との強固な関係が基盤。信州の豊かな農産物を新鮮なまま提供することで、地元の顧客から絶大な支持を得る。PB商品開発にも活用。', price: '中価格帯', products: 'オリジナルりんごジュース、信州産高原野菜（レタス、白菜）、川中島白桃、ナガノパープル、小布施栗' },
+    { id: 8, name: 'サミット', parent: '住友商事', hq: '東京都', stores: 124, sales: 3000, dominant: '東京都・神奈川県', concentration: 45, reason: '「サミットファーム」として全国の契約産地と連携。栽培履歴が明確で、安心・安全な農産物を安定供給。都市型スーパーとして品質を重視。', price: '中価格帯', products: '北海道産じゃがいも「さやか」、高知県産ニラ、指定農園のバナナ、エコファーム（千葉）の野菜、愛媛県産みかん' },
+    { id: 9, name: 'ベルク', parent: 'ベルク', hq: '埼玉県', stores: 136, sales: 3090, dominant: '埼玉県・群馬県', concentration: 40, reason: '関東広域の店舗網を活かし、各地域の生産者と直接契約。「地産地消」を推進し、地域経済への貢献と鮮度の高い商品提供を両立。', price: '中価格帯', products: '埼玉県産の小松菜・ほうれん草、群馬県産キャベツ、栃木県産トマト、茨城県産れんこん、千葉県産ねぎ' },
+    { id: 10, name: '万代', parent: '万代', hq: '大阪府', stores: 165, sales: 3200, dominant: '大阪府・奈良県', concentration: 40, reason: '関西の食文化に根差した品揃えが強み。地元の生産者との繋がりを重視し、特に「なにわの伝統野菜」など地域色豊かな商品を積極的に扱う。', price: '中価格帯', products: '大阪産（もん）の野菜、淡路島産の玉ねぎ、和歌山県産の梅・みかん、奈良県産の柿、京都府産の賀茂なす' },
+    { id: 11, name: 'ヨークベニマル', parent: 'セブン&アイHD', hq: '福島県', stores: 246, sales: 4620, dominant: '福島県・宮城県・栃木県', concentration: 45, reason: '東北地方の生産者を応援する「地産地消」が基本戦略。震災復興支援の意味合いも強く、地域の食を支えるインフラとしての役割を担う。', price: '中価格帯', products: '福島県産米「天のつぶ」、青森県産りんご、山形県産さくらんぼ、宮城県産の海の幸（ホヤ、カキ）、岩手県産きゅうり' },
+    { id: 12, name: 'マックスバリュ東海', parent: 'イオン', hq: '静岡県', stores: 228, sales: 3500, dominant: '静岡県・愛知県', concentration: 40, reason: '東海エリアの地域特性を活かし、地元の野菜、果物、水産物を豊富に揃える「じもの」コーナーを設置。地域住民の日常の食卓を支援。', price: '中価格帯', products: '静岡県産の温室メロン・いちご、三河湾のしらす、遠州灘のとらふぐ、愛知県産トマト、三重県産マイヤーレモン' },
+    { id: 13, name: 'コープみらい', parent: 'コープみらい', hq: '埼玉県', stores: 135, sales: 7900, dominant: '埼玉県・千葉県・東京都', concentration: 30, reason: '組合員の「安全・安心」への要求に応えるため、産地や生産者との交流を重視した「産直」が事業の柱。独自の厳しい基準を設けている。', price: '中価格帯', products: 'コア・フード（有機JAS等）、産直たまご、北海道産直じゃがいも、エコ・チャレンジ（減農薬野菜）、岩手県産若鶏' },
+    { id: 14, name: 'ロピア', parent: 'ロピアHD', hq: '神奈川県', stores: 82, sales: 2700, dominant: '神奈川県・東京都', concentration: 50, reason: '「食生活♥♥ロピア」を掲げ、もとは精肉店としての仕入れの強みを活かし、青果や鮮魚でも産直を強化。価格と鮮度で差別化。', price: '低～中価格帯', products: '国産牛・豚肉の一頭買い、指定農場のきのこ類、豊洲市場や各地漁港からの直送鮮魚、産直のボリュームパック野菜、季節の果物' },
+    { id: 15, name: 'いなげや', parent: 'いなげや', hq: '東京都', stores: 131, sales: 2500, dominant: '東京都・埼玉県', concentration: 40, reason: '首都圏の地元生産者を支援する「いなげやファーム」を展開。栽培体験などを通じて消費者と生産者の距離を縮める食育活動にも注力。', price: '中価格帯', products: '東京都練馬区のキャベツ、多摩地区の野菜、山梨県提携農家の果物、神奈川県産だいこん、千葉県産にんじん' },
+    { id: 16, name: 'バロー', parent: 'バローHD', hq: '岐阜県', stores: 239, sales: 6900, dominant: '岐阜県・愛知県・三重県', concentration: 30, reason: '中部地方の自社物流センターをハブに、広域からの産直品集荷と効率的な配送を実現。PB「Vセレクト」での商品開発も行う。', price: '中価格帯', products: '飛騨ほうれんそう、岐阜県産富有柿、愛知県産キャベツ、三重県産あおさ、北陸の漁港からの鮮魚' },
+    { id: 17, name: 'フジ', parent: 'フジ', hq: '愛媛県', stores: 94, sales: 3000, dominant: '愛媛県・広島県', concentration: 50, reason: '中四国エリアのリーディングカンパニーとして、瀬戸内の温暖な気候で育った農産物や水産物を中心に産直コーナーを常設。', price: '中価格帯', products: '愛媛県産かんきつ類（温州みかん、伊予柑）、香川県産レタス、徳島県産すだち、広島県産レモン、瀬戸内海の鯛' },
+    { id: 18, name: 'イズミ', parent: 'イズミ', hq: '広島県', stores: 97, sales: 4400, dominant: '広島県・山口県・九州北部', concentration: 40, reason: '「ゆめマート」などを展開し、中国・四国・九州の生産者と連携。「地産地消」を基本に、地域の食卓に根差した商品を提供する。', price: '中価格帯', products: '広島菜、鳥取県産二十世紀梨、山口県産夏みかん、九州各県の特産野菜、有明海の海苔' },
+    { id: 19, name: 'ハローズ', parent: 'ハローズ', hq: '広島県', stores: 107, sales: 1770, dominant: '岡山県・広島県', concentration: 30, reason: '24時間営業を支える物流網を活用し、深夜・早朝でも新鮮な産直品を提供。地域の生産者が出荷しやすい仕組みを構築している。', price: '中価格帯', products: '岡山県産白桃・マスカット、広島県産わけぎ、香川県産ブロッコリー、瀬戸内の鮮魚、地元農家の卵' },
+    { id: 20, name: 'サンエー', parent: 'サンエー', hq: '沖縄県', stores: 80, sales: 2000, dominant: '沖縄県全域', concentration: 95, reason: '沖縄県の食と暮らしを支える企業として、県内生産者との連携は不可欠。「沖縄県産品」の販売に最も力を入れている。', price: '市場連動型', products: 'ゴーヤー、島らっきょう、マンゴー、パイナップル、県産和牛・豚肉（あぐー豚）' },
+    { id: 21, name: 'アークス', parent: 'アークス', hq: '北海道', stores: 368, sales: 5700, dominant: '北海道・青森県', concentration: 40, reason: '広大な北海道・北東北の生産者と連携。「ラルズ」や「ユニバース」などを通じ、各地域の旬の食材を新鮮なまま消費者へ届ける。', price: '中価格帯', products: '北海道産じゃがいも・玉ねぎ、夕張メロン、道産米（ゆめぴりか等）、オホーツク海の海産物、青森県産にんにく' },
+    { id: 22, name: '平和堂', parent: '平和堂', hq: '滋賀県', stores: 157, sales: 4400, dominant: '滋賀県・京都府', concentration: 50, reason: '「地域共存」を経営理念に、滋賀・北陸・東海で事業展開。近江の伝統野菜や琵琶湖の幸など、地域の食文化を守り育てる役割を担う。', price: '中価格帯', products: '近江米、日野菜、琵琶湖の湖魚（鮎、ホンモロコ）、滋賀県産トマト、地元契約農家の野菜' },
+    { id: 23, name: '関西スーパー', parent: '関西スーパーマーケット', hq: '兵庫県', stores: 64, sales: 1250, dominant: '兵庫県・大阪府', concentration: 60, reason: '阪神間の顧客の厳しい目に応えるため、品質を重視。兵庫県内の生産者を中心に、安全で美味しい食材の提供にこだわる。', price: '中～高価格帯', products: '兵庫県認証食品、丹波の黒豆、神戸いちご、明石のタコ、淡路島のレタス' },
+    { id: 24, name: 'マルエツ', parent: 'U.S.M.H', hq: '東京都', stores: 304, sales: 4000, dominant: '東京都・神奈川県・千葉県', concentration: 30, reason: '首都圏の密集した店舗網を活かし、各店舗で近郊野菜を展開。都市生活者の健康志向に応えるため、有機野菜の産直も強化。', price: '中価格帯', products: '江戸東京野菜、千葉県産ほうれん草、埼玉県産ねぎ、有機JAS認証の野菜、神奈川県産トマト' },
+    { id: 25, name: 'カスミ', parent: 'U.S.M.H', hq: '茨城県', stores: 190, sales: 2500, dominant: '茨城県・千葉県', concentration: 50, reason: '農業が盛んな茨城県を地盤とし、生産者との距離が近いのが最大の強み。「フードスクエア」業態で地場産品の魅力を発信する。', price: '中価格帯', products: '茨城県産米（コシヒカリ）、メロン、れんこん、白菜、ピーマン' },
+    { id: 26, name: 'さえき', parent: 'さえきセルバHD', hq: '東京都', stores: 39, sales: 400, dominant: '東京都（多摩地区）', concentration: 80, reason: '多摩地区を地盤とし、「地域のお客様の冷蔵庫代わり」を目指す。小回りの利く仕入れで、地元の新鮮な野菜を毎日提供。', price: '中価格帯', products: '多摩地区で採れた野菜、日野市産トマト、八王子市産パッションフルーツ、地元の卵、山梨県産の果物' },
+    { id: 27, name: 'オオゼキ', parent: 'オオゼキ', hq: '東京都', stores: 43, sales: 1200, dominant: '東京都（城南・城西地区）', concentration: 90, reason: '「お客様第一主義」を徹底し、バイヤーが市場や産地で目利きした高品質な商品を仕入れる。特に鮮魚の産直に定評がある。', price: '中～高価格帯', products: '全国の漁港からの直送鮮魚、大田市場から仕入れる旬の野菜・果物、こだわりの精肉、珍しい地方の特産品、職人手作りの豆腐' },
+    { id: 28, name: '原信', parent: 'アクシアルR', hq: '新潟県', stores: 78, sales: 2900, dominant: '新潟県・長野県', concentration: 50, reason: '米どころ新潟を地盤に、県産米や野菜、日本海の海の幸を豊富に揃える。地域の食文化を支え、地産地消をリードする。', price: '中価格帯', products: '新潟県産コシヒカリ、枝豆、ル・レクチエ（洋梨）、佐渡島の寒ブリ、南蛮えび' },
+    { id: 29, name: 'ベイシア', parent: 'ベイシアグループ', hq: '群馬県', stores: 129, sales: 2700, dominant: '群馬県・埼玉県・千葉県', concentration: 35, reason: '「より良いものをより安く」をモットーに、大規模な自社農場や海外の契約農園からの直接仕入れで、価格競争力と品質を両立。', price: '低～中価格帯', products: '自社農場産レタス、群馬県産下仁田ねぎ、海外直輸入のバナナ・アボカド、契約農家の米、全国からの旬の野菜' },
+    { id: 30, name: 'フレッセイ', parent: 'アクシアルR', hq: '群馬県', stores: 50, sales: 950, dominant: '群馬県・栃木県', concentration: 60, reason: '群馬・栃木・埼玉の地場産品にこだわり、「地元の食卓を豊かにする」ことを目指す。生産者の顔が見える売場づくりを推進。', price: '中価格帯', products: '群馬県産やよいひめ（いちご）、ほうれん草、栃木県産にら、埼玉県産ブロッコリー、地元酪農家の牛乳' },
+    { id: 31, name: 'とりせん', parent: 'とりせん', hq: '群馬県', stores: 61, sales: 1200, dominant: '群馬県・栃木県', concentration: 50, reason: '北関東の豊かな農産物を活かし、地元の生産者と二人三脚で商品開発も行う。食の安全・安心への取り組みを重視。', price: '中価格帯', products: '地元産の新鮮野菜、上州牛・上州麦豚、赤城どりの卵、群馬県産こんにゃく、栃木県産かんぴょう' },
+    { id: 32, name: 'やましろや', parent: 'やましろや', hq: '徳島県', stores: 9, sales: 150, dominant: '徳島県北部', concentration: 90, reason: '徳島県の地域密着スーパーとして、県内産の農産物や加工品を積極的に販売。生産者との信頼関係が強み。', price: '中価格帯', products: '鳴門金時、すだち、阿波尾鶏、徳島県産しいたけ、わかめ' },
+    { id: 33, name: 'マルヨシセンター', parent: 'マルヨシセンター', hq: '香川県', stores: 38, sales: 1000, dominant: '香川県・徳島県', concentration: 60, reason: '「健康とおいしさ」をテーマに、香川・徳島・愛媛の産品を提供。瀬戸内の海の幸、山の幸をバランス良く揃える。', price: '中価格帯', products: '香川県産オリーブ、さぬきの夢（小麦）、観音寺のレタス、瀬戸内海の魚介類、愛媛県産柑橘' },
+    { id: 34, name: 'エブリイ', parent: 'エブリイホーミイHD', hq: '広島県', stores: 54, sales: 1300, dominant: '広島県・岡山県', concentration: 50, reason: '「おいしい！を地域から」をスローガンに、鮮度を追求。漁港の近くに出店するなど、産地との物理的な距離を縮める戦略も。', price: '中価格帯', products: '漁港直送の鮮魚、地元の朝採れ野菜、広島県産牡蠣、岡山県産シャインマスカット、生産者限定の卵' },
+    { id: 35, name: 'にしむた', parent: 'にしむた', hq: '鹿児島県', stores: 30, sales: 300, dominant: '鹿児島県', concentration: 90, reason: '鹿児島県、宮崎県の豊かな一次産品を県民に届ける役割。特に黒豚や地鶏、さつまいもなどの特産品の品揃えが豊富。', price: '中価格帯', products: 'かごしま黒豚、さつま揚げ、桜島大根、さつまいも、きびなご' },
+    { id: 36, name: 'タイヨー', parent: 'タイヨー', hq: '鹿児島県', stores: 65, sales: 800, dominant: '鹿児島県・宮崎県', concentration: 70, reason: '南九州の食生活を支える。地域の生産者と連携し、日々の食卓に必要な生鮮品を安定供給。', price: '中価格帯', products: '宮崎県産ピーマン、鹿児島県産そら豆、大隅半島の野菜、近海で獲れた魚、地元の醤油・味噌' },
+    { id: 37, name: 'ハローデイ', parent: 'ハローデイ', hq: '福岡県', stores: 55, sales: 1100, dominant: '福岡県', concentration: 80, reason: '「アミューズメントフードホール」をコンセプトに、見て楽しい売場づくりを追求。産直品もライブ感あふれる演出で販売する。', price: '中～高価格帯', products: '九州各地の特選野菜・果物、糸島産の野菜、玄界灘の鮮魚、熊本県産赤牛、佐賀牛' },
+    { id: 38, name: 'サニー', parent: '西友', hq: '福岡県', stores: 65, sales: 800, dominant: '福岡県・熊本県', concentration: 60, reason: 'ウォルマート調達網と地域調達のハイブリッド。九州の地場産品をEDLP（Every Day Low Price）で提供することに注力。', price: '低～中価格帯', products: '福岡県産あまおう、佐賀県産玉ねぎ、熊本県産トマト、長崎県産じゃがいも、九州産の豚肉' },
+    { id: 39, name: 'マルキョウ', parent: 'マルキョウ', hq: '福岡県', stores: 93, sales: 1300, dominant: '福岡県・佐賀県', concentration: 70, reason: '福岡都市圏を中心に展開する地域密着型スーパー。地元の生産者が持ち寄る「農産物直売所」コーナーが人気。', price: '中価格帯', products: '福岡県産の葉物野菜、筑前町のクロダマル（黒豆）、朝倉市の柿、近郊農家の卵、有明海苔' },
+    { id: 40, name: 'ダイキョー', parent: 'ダイキョーバリュー', hq: '福岡県', stores: 6, sales: 150, dominant: '福岡県（福岡市周辺）', concentration: 90, reason: '「おもしろいもの、おいしいもの」がコンセプト。社長自ら産地を巡り、ユニークな商品やこだわりの生産者を発掘してくる。', price: '中～高価格帯', products: '糸島野菜、オリジナル惣菜「はぎトッツォ」、珍しい品種の果物、九州各地のこだわりの調味料、手作り豆腐' },
+    { id: 41, name: 'フードウェイ', parent: 'フードウェイ', hq: '福岡県', stores: 38, sales: 700, dominant: '福岡県・東京都', concentration: 40, reason: '精肉部門の強みを活かしつつ、青果・鮮魚でも産直を強化。九州から関東まで出店し、各地の産品をクロスMDで展開。', price: '中価格帯', products: '佐賀牛、九州産黒毛和牛、長崎漁港直送の鮮魚、熊本県産すいか、福岡県産たけのこ' },
+    { id: 42, name: '紅屋商事', parent: '紅屋商事', hq: '青森県', stores: 23, sales: 500, dominant: '青森県（特に東青地域）', concentration: 80, reason: '「ベニーマート」「カブセンター」を展開。りんご、にんにくなど日本一の生産量を誇る地元の農産物を県民に届ける使命を担う。', price: '中価格帯', products: '青森県産りんご（ふじ、つがる等）、にんにく、ごぼう、長芋、陸奥湾のホタテ' },
+    { id: 43, name: 'ユニバース', parent: 'アークス', hq: '青森県', stores: 58, sales: 1500, dominant: '青森県・岩手県', concentration: 60, reason: '青森・岩手・秋田の北東北3県に展開。地域の生産者とのネットワークが広く、各県の特産品をきめ細かく品揃え。', price: '中価格帯', products: '八戸港のイカ、岩手県産短角牛、秋田県産あきたこまち、田子町のにんにく、南部せんべい' },
+    { id: 44, name: 'おーばん', parent: 'おーばんホールディングス', hq: '山形県', stores: 21, sales: 350, dominant: '山形県', concentration: 90, reason: '山形県の「おいしいもの」を県民に提供。生産量日本一のさくらんぼやラ・フランスなど、果物の産直に特に強い。', price: '中価格帯', products: 'さくらんぼ（佐藤錦）、ラ・フランス、だだちゃ豆、米沢牛、山形のだし' },
+    { id: 45, name: 'マルト', parent: 'マルトグループ', hq: '福島県', stores: 48, sales: 900, dominant: '福島県（浜通り）・茨城県', concentration: 70, reason: 'いわき市を拠点に福島・茨城で展開。常磐ものの魚介類や地元の農産物を通じて、地域の復興と食文化の発信に貢献。', price: '中価格帯', products: '常磐もののメヒカリ・あんこう、福島県産トマト、いわきねぎ、茨城県産ほしいも、地元の米' },
+    { id: 46, name: '東武ストア', parent: '東武鉄道', hq: '東京都', stores: 60, sales: 1000, dominant: '東京都・埼玉県・千葉県（東武沿線）', concentration: 40, reason: '東武沿線の地域住民の生活を支える。沿線地域の生産者と連携した「地産マルシェ」などを開催し、地域活性化に貢献。', price: '中価格帯', products: '栃木県産いちご（とちあいか）、埼玉県川越市のさつまいも、千葉県船橋市の梨、群馬県産の野菜、日光のゆば' },
+    { id: 47, name: '京王ストア', parent: '京王電鉄', hq: '東京都', stores: 28, sales: 650, dominant: '東京都（京王沿線）', concentration: 80, reason: '京王沿線の「食のインフラ」として、沿線の農産物を積極的に扱う。特に多摩地区の野菜など、東京産品の販売に注力。', price: '中価格帯', products: '八王子しょうが、日野市産トマト、多摩地区のブルーベリー、高尾山のきのこ、山梨・長野の提携農家からの果物' },
+    { id: 48, name: 'そうてつローゼン', parent: '相鉄HD', hq: '神奈川県', stores: 52, sales: 800, dominant: '神奈川県（相鉄沿線）', concentration: 70, reason: '相鉄沿線の地産地消を推進。神奈川県内の生産者から仕入れた「かながわ育ち」の野菜や畜産物を販売。', price: '中価格帯', products: '三浦半島のだいこん・キャベツ、湘南のしらす、やまゆりポーク、はまポーク、県内産の卵' },
+    { id: 49, name: 'オダキューOX', parent: '小田急電鉄', hq: '神奈川県', stores: 28, sales: 500, dominant: '神奈川県（小田急沿線）', concentration: 60, reason: '小田急沿線の豊かな自然環境で育まれた食材を提供。箱根や丹沢の麓で採れた野菜や特産品が人気。', price: '中～高価格帯', products: '箱根西麓三島野菜、足柄茶、丹沢のジビエ、小田原の梅干し、朝ドレファ～ミ♪（JAさがみ）の野菜' },
+    { id: 50, name: 'リオン・ドール', parent: 'リオン・ドール', hq: '福島県', stores: 53, sales: 900, dominant: '福島県（会津・中通り）', concentration: 65, reason: '福島県・栃木県・新潟県で「地域に密着したオンリーワンの店づくり」を目指す。会津の伝統野菜など、地域ならではの品揃えが強み。', price: '中価格帯', products: '会津産アスパラガス、喜多方ラーメン、奥会津のきのこ、新潟県魚沼産コシヒカリ、栃木県産いちご' },
+    { id: 51, name: 'コノミヤ', parent: 'コノミヤ', hq: '大阪府', stores: 63, sales: 1300, dominant: '大阪府・愛知県', concentration: 50, reason: '近畿・東海地方で展開。鮮度と安さにこだわり、地元の提携農家からの直接仕入れを積極的に行う。', price: '中価格帯', products: '大阪府産のキャベツ、愛知県産のトマト、和歌山県産のしらす、地元の精肉、特選たまご' },
+    { id: 52, name: 'スーパー玉出', parent: 'スーパー玉出', hq: '大阪府', stores: 30, sales: 400, dominant: '大阪府（大阪市内）', concentration: 80, reason: '「安さ」と「楽しさ」がコンセプト。産地直送品も積極的に扱い、地域住民の支持を得る。', price: '低価格帯', products: '大阪府産の葉物野菜、泉州地域の水産物、地元の卵、新鮮な果物、特売の肉' },
+    { id: 53, name: 'マツモト', parent: 'マツモト', hq: '京都府', stores: 31, sales: 700, dominant: '京都府・大阪府', concentration: 60, reason: '京都府を地盤とし、京野菜をはじめとする地元の新鮮食材にこだわる。地域密着型の戦略を推進。', price: '中価格帯', products: '京野菜（九条ねぎ、賀茂なす）、京都牛、丹波地鶏、宇治茶の原料、地元産米' },
+    { id: 54, name: 'マルヤス', parent: 'マルヤス', hq: '大阪府', stores: 30, sales: 500, dominant: '大阪府・奈良県', concentration: 70, reason: '近畿圏のベッドタウンを中心に展開。地元の生産者との繋がりを大切にし、旬の地場野菜を積極的に販売。', price: '中価格帯', products: '大阪府近郊の朝採れ野菜、奈良県産の柿、和歌山県産の梅、地元酪農家の牛乳、特選果物' },
+    { id: 55, name: 'フレスコ', parent: 'フレスコ', hq: '京都府', stores: 80, sales: 1500, dominant: '京都府・大阪府', concentration: 50, reason: '京都市内を中心に小型店を展開。小回りの利く調達網を構築し、地元の生産者から日々新鮮な食材を仕入れる。', price: '中価格帯', products: '京野菜、京都ポーク、地元産米、丹波栗、地元の豆腐' },
+    { id: 56, name: 'サニーマート', parent: 'サニーマート', hq: '高知県', stores: 23, sales: 600, dominant: '高知県全域', concentration: 90, reason: '高知県内でのシェアが高く、温暖な気候で育つ高知産の野菜や柑橘類の販売に注力。生産者との契約が強固。', price: '中価格帯', products: '高知県産のナス、ピーマン、ショウガ、文旦・小夏、土佐ジローの卵' },
+    { id: 57, name: 'サンリブ', parent: 'サンリブ・マルショクグループ', hq: '福岡県', stores: 120, sales: 2500, dominant: '福岡県・大分県・熊本県', concentration: 40, reason: '九州・山口地方で展開。各県の生産者と連携し、地域特有の農産物や水産物を豊富に揃える。', price: '中価格帯', products: '九州産米、大分県産のカボス、福岡県産のあまおう、長崎県産の鮮魚、熊本県産トマト' },
+    { id: 58, name: 'エレナ', parent: 'エレナ', hq: '長崎県', stores: 38, sales: 600, dominant: '長崎県', concentration: 90, reason: '長崎県でのシェアが高く、島原半島などの新鮮な野菜や、長崎の豊かな海の幸を直接仕入れることに注力。', price: '中価格帯', products: '長崎県産のじゃがいも、玉ねぎ、びわ、長崎港直送の鮮魚、五島列島の椿油' },
+    { id: 59, name: 'トキハインダストリー', parent: 'トキハ', hq: '大分県', stores: 30, sales: 500, dominant: '大分県', concentration: 80, reason: '大分県を中心に展開。大分の特産品であるカボスや豊後牛など、地元ブランドの育成と販売を支援。', price: '中～高価格帯', products: '大分県産カボス、豊後牛、しいたけ、関アジ・関サバ（加工品）、地元の乳製品' },
+    { id: 60, name: 'モリナガ', parent: 'モリナガ', hq: '佐賀県', stores: 18, sales: 300, dominant: '佐賀県', concentration: 90, reason: '佐賀県産の「さがほのか」などのブランド作物を積極的に扱う。地域密着型のきめ細かい産直が強み。', price: '中価格帯', products: '佐賀県産さがほのか（いちご）、佐賀牛、海苔、玉ねぎ、アスパラガス' }
+];
+
+let currentSort = {
+    column: 'sales',
+    direction: 'desc'
+};
+
+const apiKey = "";
+const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+function formatSource(source) {
+    if (!source.uri || !source.title) return '';
+    return `<a href="${source.uri}" target="_blank" class="text-indigo-600 hover:text-indigo-800 underline">${source.title}</a>`;
+}
+
+async function callGeminiApi(systemPrompt, userQuery, useSearch = false, elementToUpdate, spinnerId, sourcesId) {
+    const spinner = document.getElementById(spinnerId);
+    const resultElement = document.getElementById(elementToUpdate);
+    const sourcesElement = document.getElementById(sourcesId);
+    
+    resultElement.innerHTML = 'データを分析中です...';
+    sourcesElement.innerHTML = '';
+    sourcesElement.classList.add('hidden');
+    
+    if (spinner) spinner.classList.remove('hidden');
+
+    const payload = {
+        contents: [{ parts: [{ text: userQuery }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+    };
+
+    if (useSearch) {
+        payload.tools = [{ "google_search": {} }];
+    }
+
+    let response = null;
+    let result = null;
+    const maxRetries = 5;
+    let delay = 1000;
+
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (response.status !== 429) { 
+                result = await response.json();
+                break;
+            }
+        } catch (error) {
+            console.error('Fetch error:', error);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2;
+    }
+
+    if (spinner) spinner.classList.add('hidden');
+
+    if (!result || !result.candidates || result.candidates.length === 0) {
+        resultElement.innerText = '⚠️ AI応答エラー: データ分析に失敗しました。時間をおいてお試しください。';
+        return;
+    }
+
+    const candidate = result.candidates[0];
+    const text = candidate.content?.parts?.[0]?.text || '結果が見つかりませんでした。';
+    
+    resultElement.innerText = text;
+
+    let sources = [];
+    const groundingMetadata = candidate.groundingMetadata;
+    if (groundingMetadata && groundingMetadata.groundingAttributions) {
+        sources = groundingMetadata.groundingAttributions
+            .map(attribution => ({
+                uri: attribution.web?.uri,
+                title: attribution.web?.title,
+            }))
+            .filter(source => source.uri && source.title);
+    }
+    
+    if (sources.length > 0) {
+        sourcesElement.innerHTML = '引用元: ' + sources.map(formatSource).join(', ');
+        sourcesElement.classList.remove('hidden');
+    }
+}
+
+function renderTable(data) {
+    const tableBody = document.getElementById('supermarketTable');
+    tableBody.innerHTML = '';
+    data.forEach(supermarket => {
+        const row = document.createElement('tr');
+        row.className = 'bg-white border-b hover:bg-indigo-50/50';
+        row.innerHTML = `
+            <td class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">${supermarket.name}</td>
+            <td class="px-4 py-3">${supermarket.parent}</td>
+            <td class="px-4 py-3">${supermarket.hq}</td>
+            <td class="px-4 py-3 text-right">${supermarket.stores.toLocaleString()}</td>
+            <td class="px-4 py-3 text-right font-semibold">${supermarket.sales.toLocaleString()}</td>
+            <td class="px-4 py-3">${supermarket.dominant}</td>
+            <td class="px-4 py-3">${supermarket.reason}</td>
+            <td class="px-4 py-3">${supermarket.price}</td>
+            <td class="px-4 py-3">${supermarket.products}</td>
+            <td class="px-4 py-3"><button data-id="${supermarket.id}" class="strategic-proposal-btn bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold py-1 px-2 rounded-full transition shadow">✨ 戦略提案</button></td>
+        `;
+        tableBody.appendChild(row);
+    });
+}
+
+function sortData(data, column, direction) {
+    data.sort((a, b) => {
+        let valA = a[column];
+        let valB = b[column];
+        
+        if (column === 'stores' || column === 'sales') {
+            valA = Number(valA);
+            valB = Number(valB);
+        } else if (typeof valA === 'string') {
+            valA = valA.toLowerCase();
+            valB = valB.toLowerCase();
+        }
+
+        if (valA < valB) {
+            return direction === 'asc' ? -1 : 1;
+        }
+        if (valA > valB) {
+            return direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+    });
+    return data;
+}
+
+function initCharts() {
+    // --- Chart Helper Functions ---
+    const wrapLabel = (label) => {
+        const maxLength = 16;
+        if (typeof label !== 'string' || label.length <= maxLength) return label;
+        const words = label.split(' ');
+        let lines = [];
+        let currentLine = '';
+        words.forEach(word => {
+            if ((currentLine + ' ' + word).trim().length > maxLength && currentLine.length > 0) {
+                lines.push(currentLine);
+                currentLine = word;
+            } else {
+                currentLine = currentLine ? currentLine + ' ' + word : word;
+            }
+        });
+        lines.push(currentLine);
+        return lines;
+    };
+
+    const tooltipTitleCallback = (tooltipItems) => {
+        const item = tooltipItems[0];
+        let label = item.chart.data.labels[item.dataIndex];
+        return Array.isArray(label) ? label.join(' ') : label;
+    };
+    
+    // --- Chart Initialization ---
+
+    // 1. Prefecture Chart (Bar)
+    const prefectureCounts = supermarketData.reduce((acc, curr) => {
+        acc[curr.hq] = (acc[curr.hq] || 0) + 1;
+        return acc;
+    }, {});
+    const sortedPrefectures = Object.entries(prefectureCounts).sort(([,a],[,b]) => b-a).slice(0, 10);
+    const prefectureLabels = sortedPrefectures.map(p => p[0]);
+    const prefectureData = sortedPrefectures.map(p => p[1]);
+
+    const prefectureCtx = document.getElementById('prefectureChart').getContext('2d');
+    new Chart(prefectureCtx, {
+        type: 'bar',
+        data: {
+            labels: prefectureLabels.map(wrapLabel),
+            datasets: [{
+                label: '企業数',
+                data: prefectureData,
+                backgroundColor: ['#4338ca', '#4f46e5', '#6366f1', '#818cf8', '#a5b4fc', '#c7d2fe', '#a78bfa', '#9333ea', '#7e22ce', '#581c87'],
+                borderColor: '#fff',
+                borderWidth: 1,
+                borderRadius: 5,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            scales: { x: { beginAtZero: true, grid: { display: false } }, y: { grid: { display: false } } },
+            plugins: { legend: { display: false }, tooltip: { callbacks: { title: tooltipTitleCallback } } }
+        }
+    });
+    
+    // 2. Scale Chart (Doughnut)
+    const scaleBins = { '100店未満': 0, '100-299店': 0, '300-999店': 0, '1000店以上': 0 };
+    supermarketData.forEach(s => {
+        if (s.stores < 100) scaleBins['100店未満']++;
+        else if (s.stores < 300) scaleBins['100-299店']++;
+        else if (s.stores < 1000) scaleBins['300-999店']++;
+        else scaleBins['1000店以上']++;
+    });
+
+    const scaleCtx = document.getElementById('scaleChart').getContext('2d');
+    new Chart(scaleCtx, {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(scaleBins),
+            datasets: [{
+                data: Object.values(scaleBins),
+                backgroundColor: ['#059669', '#10b981', '#34d399', '#6ee7b7'],
+                borderColor: '#f8fafc',
+                borderWidth: 4,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { title: tooltipTitleCallback } } }
+        }
+    });
+
+    // 3. Concentration Chart (Radar)
+    const concentrationData = [
+        { name: 'イオン', concentration: 0.1 }, 
+        { name: 'アークス', concentration: 40 },
+        { name: 'ライフ', concentration: 35 },
+        { name: 'マルエツ', concentration: 30 },
+        { name: 'ヨークベニマル', concentration: 45 },
+        { name: 'バロー', concentration: 30 },
+        { name: 'MV東海', concentration: 40 },
+        { name: '成城石井', concentration: 15 }, 
+        { name: 'カスミ', concentration: 50 },
+        { name: 'ヤオコー', concentration: 60 }
+    ];
+
+    const concentrationLabels = concentrationData.map(c => wrapLabel(c.name));
+    const concentrationValues = concentrationData.map(c => c.concentration);
+
+    const concentrationCtx = document.getElementById('concentrationChart').getContext('2d');
+    new Chart(concentrationCtx, {
+        type: 'radar',
+        data: {
+            labels: concentrationLabels,
+            datasets: [{
+                label: '本社所在地の店舗集中度 (%)',
+                data: concentrationValues,
+                backgroundColor: 'rgba(79, 70, 229, 0.2)',
+                borderColor: '#4F46E5',
+                pointBackgroundColor: '#4F46E5',
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: '#4F46E5',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                r: {
+                    angleLines: { display: true },
+                    suggestedMin: 0,
+                    suggestedMax: 70,
+                    pointLabels: { font: { size: 10 } },
+                    grid: { color: '#E5E7EB' }
+                }
+            },
+            plugins: { legend: { display: false }, tooltip: { callbacks: { title: tooltipTitleCallback } } }
+        }
+    });
+
+
+    // 4. Bubble Chart (Chart.js replacement) - FIXED
+    const bubbleChartData = [
+        { name: 'イオン', stores: 19280, sales: 91168, hq: '千葉県' },
+        { name: 'ライフ', stores: 304, sales: 8647, hq: '大阪府' },
+        { name: 'バロー', stores: 239, sales: 6900, hq: '岐阜県' },
+        { name: 'アークス', stores: 368, sales: 5700, hq: '北海道' },
+        { name: 'ヤオコー', stores: 184, sales: 5740, hq: '埼玉県' },
+        { name: 'ヨークベニマル', stores: 246, sales: 4620, hq: '福島県' },
+        { name: '平和堂', stores: 157, sales: 4400, hq: '滋賀県' },
+        { name: 'マルエツ', stores: 304, sales: 4000, hq: '東京都' },
+        { name: 'MV東海', stores: 228, sales: 3500, hq: '静岡県' },
+        { name: 'サミット', stores: 124, sales: 3000, hq: '東京都' },
+    ];
+    
+    // Chart.js Bubble Chart requires data points {x: stores, y: sales, r: size}
+    const chartJsBubbleData = bubbleChartData.map(d => ({
+        x: d.stores, 
+        y: d.sales, 
+        r: Math.sqrt(d.sales) / 10 + 5, // Size scaled by sales (r)
+        label: d.name
+    }));
+
+    const bubbleCtx = document.getElementById('bubbleChart').getContext('2d');
+    new Chart(bubbleCtx, {
+        type: 'bubble',
+        data: {
+            datasets: [{
+                label: '主要企業',
+                data: chartJsBubbleData,
+                backgroundColor: bubbleChartData.map((d, i) => i === 0 ? 'rgba(220, 38, 38, 0.6)' : 'rgba(79, 70, 229, 0.6)'),
+                borderColor: bubbleChartData.map((d, i) => i === 0 ? '#DC2626' : '#4F46E5'),
+                borderWidth: 1.5,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'logarithmic',
+                    title: { display: true, text: '店舗数 (店舗) - 対数スケール' },
+                    min: 10,
+                    ticks: {
+                        callback: function(value, index, values) {
+                            if (value === 10 || value === 100 || value === 1000 || value === 10000 || value === 20000) {
+                                return value.toLocaleString();
+                            }
+                        }
+                    },
+                    grid: { color: '#E5E7EB' }
+                },
+                y: {
+                    title: { display: true, text: '売上高 (億円)' },
+                    beginAtZero: true,
+                    grid: { color: '#E5E7EB' }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const item = context.raw;
+                            return [
+                                `店舗数: ${item.x.toLocaleString()}店`,
+                                `売上高: ${item.y.toLocaleString()}億円`
+                            ];
+                        },
+                        title: function(tooltipItems) {
+                            return tooltipItems[0].raw.label;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+
+    // 5. Area Chart (Doughnut)
+    const areaMapping = {
+        '北海道': '北海道', '青森県': '東北', '福島県': '東北', '山形県': '東北', '新潟県': '北信越', '長野県': '北信越',
+        '埼玉県': '関東', '東京都': '関東', '神奈川県': '関東', '千葉県': '関東', '茨城県': '関東', '群馬県': '関東',
+        '岐阜県': '東海', '静岡県': '東海', '愛媛県': '四国', '徳島県': '四国', '香川県': '四国', '高知県': '四国',
+        '大阪府': '近畿', '兵庫県': '近畿', '滋賀県': '近畿', '京都府': '近畿',
+        '広島県': '中国', 
+        '福岡県': '九州', '鹿児島県': '九州', '長崎県': '九州', '佐賀県': '九州', '大分県': '九州', '沖縄県': '沖縄'
+    };
+
+    const areaCounts = supermarketData.reduce((acc, curr) => {
+        const area = areaMapping[curr.hq];
+        if (area) {
+            acc[area] = (acc[area] || 0) + 1;
+        }
+        return acc;
+    }, {});
+    
+    const areaLabels = Object.keys(areaCounts);
+    const areaData = Object.values(areaCounts);
+    
+    const areaCtx = document.getElementById('areaChart').getContext('2d');
+    new Chart(areaCtx, {
+        type: 'doughnut',
+        data: {
+            labels: areaLabels,
+            datasets: [{
+                data: areaData,
+                backgroundColor: ['#4F46E5', '#6366F1', '#818CF8', '#A5B4FC', '#C7D2FE', '#E0E7FF', '#FEE2E2', '#FCA5A5'],
+                borderColor: '#fff',
+                borderWidth: 4,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { title: tooltipTitleCallback } } }
+        }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    let filteredData = [...supermarketData];
+    
+    const sortedInitialData = sortData(filteredData, currentSort.column, currentSort.direction);
+    renderTable(sortedInitialData);
+    
+    // --- Initialize all charts after DOM content is loaded ---
+    initCharts();
+
+    // --- Table Filtering and Sorting Logic ---
+    const searchInput = document.getElementById('searchInput');
+    searchInput.addEventListener('keyup', () => {
+        const filter = searchInput.value.toLowerCase();
+        filteredData = supermarketData.filter(item => {
+            return Object.values(item).some(val =>
+                String(val).toLowerCase().includes(filter)
+            );
+        });
+        const sortedData = sortData(filteredData, currentSort.column, currentSort.direction);
+        renderTable(sortedData);
+    });
+    
+    document.querySelectorAll('thead th').forEach(header => {
+        header.addEventListener('click', () => {
+            const sortColumn = header.dataset.sort;
+            if (!sortColumn) return;
+
+            const direction = (sortColumn === currentSort.column && currentSort.direction === 'asc') ? 'desc' : 'asc';
+            currentSort = { column: sortColumn, direction: direction };
+
+            document.querySelectorAll('thead th').forEach(th => {
+                th.classList.remove('sort-asc', 'sort-desc');
+            });
+            header.classList.add(direction === 'asc' ? 'sort-asc' : 'sort-desc');
+            
+            const sortedData = sortData(filteredData, sortColumn, direction);
+            renderTable(sortedData);
+        });
+    });
+
+    // --- LLM Interaction Logic ---
+
+    const strategyModal = document.getElementById('strategyModal');
+    const closeBtn = strategyModal.querySelector('.close');
+    const modalTargetName = document.getElementById('modalTargetName');
+    const modalText = document.getElementById('modalText');
+    const modalSpinner = document.getElementById('modalSpinner');
+    const modalSources = document.getElementById('modalSources');
+
+    // Open Modal and call API
+    document.getElementById('supermarketTable').addEventListener('click', (event) => {
+        if (event.target.classList.contains('strategic-proposal-btn')) {
+            const id = parseInt(event.target.dataset.id);
+            const data = supermarketData.find(d => d.id === id);
+
+            modalTargetName.innerText = `対象企業: ${data.name} (${data.hq}) - ${data.dominant}`;
+            strategyModal.style.display = 'block';
+
+            const dataString = `企業名: ${data.name}, 親会社: ${data.parent}, 本社: ${data.hq}, 店舗数: ${data.stores.toLocaleString()}店, 売上高: ${data.sales.toLocaleString()}億円, ドミナントエリア: ${data.dominant}, 産直への注力理由: ${data.reason}, 価格帯: ${data.price}, 主な産直商品例: ${data.products}`;
+            
+            const systemPrompt = "あなたはヤマト運輸の経営企画部門に所属する上級コンサルタントです。提供されたスーパーマーケットのデータに基づき、ヤマト運輸の強み（広域な物流ネットワーク、生産者との深い連携）を活かした、具体的な『提携戦略提案』を日本語で簡潔に、箇条書きで3点提案してください。提案は企業メリットとヤマト運輸の価値提供の両面を含めてください。";
+            const userQuery = `以下のスーパーマーケットとの提携戦略を提案してください。\n\nデータ:\n${dataString}`;
+            
+            callGeminiApi(systemPrompt, userQuery, false, 'modalText', 'modalSpinner', 'modalSources');
+        }
+    });
+
+    // Close Modal
+    closeBtn.onclick = function() {
+        strategyModal.style.display = 'none';
+    }
+    window.onclick = function(event) {
+        if (event.target == strategyModal) {
+            strategyModal.style.display = 'none';
+        }
+    }
+
+    // Scenario Generation Logic
+    const generateScenarioBtn = document.getElementById('generateScenarioBtn');
+    const scenarioPrompt = document.getElementById('scenarioPrompt');
+    const scenarioResult = document.getElementById('scenarioResult');
+    const scenarioText = document.getElementById('scenarioText');
+    const scenarioSpinner = document.getElementById('scenarioSpinner');
+    const scenarioBtnText = document.getElementById('scenarioBtnText');
+    const scenarioSources = document.getElementById('scenarioSources');
+
+    generateScenarioBtn.addEventListener('click', () => {
+        if (scenarioPrompt.value.trim() === '') {
+            alert('提携戦略のプロンプトを入力してください。');
+            return;
+        }
+
+        scenarioResult.classList.remove('hidden');
+        scenarioBtnText.innerText = '分析中...';
+        scenarioSpinner.classList.remove('hidden');
+        generateScenarioBtn.disabled = true;
+
+        const allDataString = supermarketData.map(d => `${d.name} (${d.hq}, ${d.stores}店, ${d.sales}億円, ${d.dominant}, ${d.price}, ${d.reason}`).join('\n');
+
+        const systemPrompt = "あなたはヤマト運輸の経営戦略責任者です。提供された50社のデータリストと、ユーザーの具体的な要件に基づき、広域な物流ネットワークと産直連携の強化を目的とした、実現可能性の高い『全体提携シナリオ（概要）』を日本語で作成してください。シナリオは以下の項目で構成し、市場の動向も考慮するためにGoogle検索を使用してください。1.戦略の目的、2.対象企業群の定義、3.ヤマト運輸の具体的な役割（物流・システム）、4.期待される成果。";
+        
+        const userQuery = `ユーザーからの提携要件: "${scenarioPrompt.value}"\n\n[戦略策定に利用可能な50社のデータ]:\n${allDataString}`;
+
+        callGeminiApi(systemPrompt, userQuery, true, 'scenarioText', 'scenarioSpinner', 'scenarioSources')
+            .finally(() => {
+                scenarioBtnText.innerText = '✨ 戦略シナリオを生成';
+                scenarioSpinner.classList.add('hidden');
+                generateScenarioBtn.disabled = false;
+            });
+    });
+
+});
+</script>
+
+</body>
+</html>
